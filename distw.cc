@@ -1,7 +1,7 @@
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
-#include "mapreduce.h"
+//#include "mapreduce.h"
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
