@@ -2,23 +2,31 @@
 #define THREADPOOL_H
 #include <pthread.h>
 #include <stdbool.h>
+#include <vector>
+#include <queue>
+#include <deque>
+//using namespace std;
+
 
 typedef void (*thread_func_t)(void *arg);
 
-typedef struct ThreadPool_work_t {
+typedef struct ThreadPool_work_t {   //Struct for a work task
     thread_func_t func;              // The function pointer
     void *arg;                       // The arguments for the function
     // TODO: Add other members here if needed
 } ThreadPool_work_t;
 
-typedef struct {
+typedef struct {  //a struct that describes a member and its task its working on
     // TODO: Add members here
+    //std:: que<ThreadPool_work_t> global_que;
+    std:: deque<ThreadPool_work_t> global_que;
 } ThreadPool_work_queue_t;
 
 typedef struct {
     // TODO: Add members here
     int num_members;
-    
+    ThreadPool_work_queue_t work_queue;
+
 } ThreadPool_t;
 
 
