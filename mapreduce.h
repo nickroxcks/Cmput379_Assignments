@@ -5,12 +5,12 @@
 typedef void (*Mapper)(char *file_name);
 typedef void (*Reducer)(char *key, int partition_number);
 
-/*
+
 void MR_Run(int num_files, char *filenames[],
             Mapper map, int num_mappers,
             Reducer concate, int num_reducers);
-*/
-//void MR_Emit(char *key, char *value);
+
+void MR_Emit(char *key, char *value);
 
 unsigned long MR_Partition(char *key, int num_partitions);
 
