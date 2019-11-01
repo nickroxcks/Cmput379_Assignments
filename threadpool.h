@@ -21,13 +21,13 @@ typedef struct {  //a struct with a work que.
 } ThreadPool_work_queue_t;
 
 typedef struct {
-    pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
-    pthread_mutex_t mutex_main = PTHREAD_MUTEX_INITIALIZER;
-    pthread_mutex_t mutex_thread = PTHREAD_MUTEX_INITIALIZER;
-    pthread_mutex_t mutex_job = PTHREAD_MUTEX_INITIALIZER;
-    int num_members;
+    pthread_cond_t cond = PTHREAD_COND_INITIALIZER;  //used for signaling a thread to stop sleeping
+    pthread_mutex_t mutex_main = PTHREAD_MUTEX_INITIALIZER;  //used for pulling tasks
+    pthread_mutex_t mutex_thread = PTHREAD_MUTEX_INITIALIZER;  //used for writing to database
+    pthread_mutex_t mutex_job = PTHREAD_MUTEX_INITIALIZER;  //used for incrementing or decrementing num_jobs
+    int num_members;  //used in creation of threadpool
     int num_jobs;  //keep track of threads working
-    ThreadPool_work_queue_t work_queue;
+    ThreadPool_work_queue_t work_queue;  //linking to a deque in the ThreadPool_work_queue_t struct
     std:: vector<pthread_t> members_vector;  //vector of all threads belonging to pool
 } ThreadPool_t;
 
