@@ -1,4 +1,4 @@
-Nicholas Serrano 1508361
+Nicholas Serrano
 MapReduce library
 
 Please read over all the function descriptions to ensure how to use the libraries to their
