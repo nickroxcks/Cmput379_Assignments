@@ -215,9 +215,9 @@ void MR_Emit(char *key, char *value){
         multimap<string,string> temp_map;
         
         temp_map.insert(std::pair<string,string>(stringkey,stringvalue));
-        pthread_mutex_lock(&mutex_main); //just in case there is concurrent writing to database
+        pthread_mutex_lock(&(pool.mutex_thread)); //just in case there is concurrent writing to database
         inter_data[placement] = temp_map;  //inter_data<unsigned long, multimap<string,string> >
-        pthread_mutex_unlock(&mutex_main);
+        pthread_mutex_unlock(&(pool.mutex_thread));
   
         for (multimap<string,string>::iterator it= temp_map.begin(); it != temp_map.end(); ++it) {
                 cout << it->first << "\t" << it->second << endl ;
@@ -226,9 +226,9 @@ void MR_Emit(char *key, char *value){
     }
     else if(inter_data.count(placement)>0){
         //if we reach here, we are adding to a existing partion in database
-        pthread_mutex_lock(&mutex_main);
+        pthread_mutex_lock(&(pool.mutex_thread));
         inter_data[placement].insert(std::pair<string,string>(stringkey,stringvalue));
-        pthread_mutex_unlock(&mutex_main);
+        pthread_mutex_unlock(&(pool.mutex_thread));
     }
     else{
         cout<<"Unkown Error Has Occured"<<endl;
