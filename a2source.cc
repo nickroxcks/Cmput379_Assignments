@@ -35,28 +35,23 @@ pthread_mutex_t mutex_job = PTHREAD_MUTEX_INITIALIZER;
 ThreadPool_t  pool;
 ThreadPool_work_t reduce_struct;
 Reducer global_pnt_reduce;
-int num_jobs;
 int global_num_reducers;  //this global variable is to be passed to other functions
-map<unsigned long, multimap<string,string> > inter_data;
-//std:: queue<ThreadPool_work_t> global_que;
-/*
-void *Thread_run(ThreadPool_t *tp){
+map<unsigned long, multimap<string,string> > inter_data;  //intermediate data structure
 
-}
-*/
-
+//find the size of a file(in local directory)
 size_t find_File_size(char* filename) {
     struct stat temp;
     if(stat(filename, &temp) != 0) {
         return 0;}
     return temp.st_size;   
 }
+//strucct object used to associate a file with its size
 struct MyFile
 {
     char * name;
     size_t size;
 };
-
+//struct used to define comparator operator when calling sort()
 struct file_less_than
 {
     inline bool operator() (const MyFile& first_struct, const MyFile& second_struct)
@@ -77,7 +72,15 @@ unsigned long computePartitionNumber(string key, int numPartitions)
 
     return hash % numPartitions;
 }
-//iterate through partion, and for each key, call Reduce. Reduce will then call Mr_next at some point
+//original version of MR_Partition(for header file completeness)
+unsigned long MR_Partition(char *key, int num_partitions) {
+    unsigned long hash = 5381;
+    int c;
+    while ((c = *key++) != '\0')
+    hash = hash * 33 + c;
+    return hash % num_partitions;
+}
+//iterate through partion, and for each key, call Reduce. User should have called MR_GetNext inside Reduce
 void MR_ProcessPartition(int partition_number){
     
     //this for loop looks at the partion, and finds each key once(even if the key is repeated)
@@ -87,50 +90,77 @@ void MR_ProcessPartition(int partition_number){
     {
         
         string key_name =  it->first;
-        //cout<<"about to call reduce for the key: "<<key_name<<endl;
         char * cString = (char *) key_name.c_str();
-        (global_pnt_reduce)(cString,partition_number);  //calling the reduce function
+        (global_pnt_reduce)(cString,partition_number);  //calling the user defined reduce function
 
     }
 
 }
 
-void * thread_function(void *ptr) {
-    
-    /*const char *msg = (char *)ptr;
-    printf("%s\n", msg);
-    return ptr; // return pointer to thread result, can’t be pointing to local variable*/
-    //cout<<"I am thread a thread! My id is ";
-    //cout<< pthread_self()<<endl;
-    /*
-    while((pool.work_queue).global_que.empty()){
-        //spin
-    }
-    cout<<"A task has been submitted. sub thread is about to execute map"<<endl;
-    ThreadPool_work_t struct_function = (pool.work_queue).global_que.at(0);  //grabs the task(front of que)
-    (pool.work_queue).global_que.pop_front();  //removes task from que
-    (struct_function.func)(struct_function.arg);  //runs the task
-    */
-   while(true){
-        pthread_mutex_lock(&mutex_main);
-        while ((pool.work_queue).global_que.empty()) {
-            pthread_cond_wait(&cond, &mutex_main);
-        }
-        /* operate on x and y */
-        ThreadPool_work_t struct_function = (pool.work_queue).global_que.at(0);  //grabs the task(front of que)
-        (pool.work_queue).global_que.pop_front();  //removes task from que
-        pthread_mutex_unlock(&mutex_main);
-        cout<<" My id is ";
-        cout<< pthread_self();
-        cout<<" and i am working on the file" << (char *) struct_function.arg<<endl;
-        (struct_function.func)(struct_function.arg);
-        pthread_mutex_lock(&mutex_job);
-        cout<<"inside subthread that finished task. current num job before stopping is: "<<num_jobs<<endl;
-        num_jobs = num_jobs - 1;
-        pthread_mutex_unlock(&mutex_job);
-    }
-    }
+bool ThreadPool_add_work(ThreadPool_t *tp, thread_func_t func, void *arg){
+        ThreadPool_work_t struct_function;
+        struct_function.func =(thread_func_t) func;  
+        struct_function.arg = arg; 
 
+        pthread_mutex_lock(&(tp->mutex_job));  //prevents concurrent changes to number of jobs
+        tp->num_jobs = tp->num_jobs + 1;
+        cout<<"main thread just increased job count. the job count is: "<<tp->num_jobs<<endl;
+        pthread_mutex_unlock(&(tp->mutex_job));
+        pthread_mutex_lock(&(tp->mutex_main));  //prevents concurrent changes to que
+        (tp->work_queue).global_que.push_front(struct_function);
+        pthread_mutex_unlock(&(tp->mutex_main));
+        pthread_cond_signal(&(tp->cond));  //send notification to threadpool
+        return 1;
+}
+
+void ThreadPool_destroy(ThreadPool_t *tp){
+        //cout<<"waiting for everything to finish"<<endl;
+        //in the event a thread is still working, wait for all threads in pool to finish
+        while(tp->num_jobs !=0){
+            
+            ;//spinning
+        }
+        for(int i=0;i<tp->members_vector.size();i++){
+            cout<<"going to kill "<<tp->members_vector.at(i)<<endl;;
+            pthread_cancel(tp->members_vector.at(i));
+        }
+        //delete tp;
+}
+
+//recomended to have lock before calling this function and unlock afterwards
+ThreadPool_work_t ThreadPool_get_work(ThreadPool_t *tp){
+    ThreadPool_work_t struct_function = (tp->work_queue).global_que.at(0);  //grabs the task(front of que)
+    (tp->work_queue).global_que.pop_front();  //removes task from que
+    return struct_function;
+}
+
+void *Thread_run(ThreadPool_t *tp,ThreadPool_work_t work_task){
+    cout<<" My id is ";
+    cout<< pthread_self();
+    cout<<" and i am working on the file" << (char *) work_task.arg<<endl;
+    (work_task.func)(work_task.arg);
+    pthread_mutex_lock(&(tp->mutex_job));
+    cout<<"inside subthread that finished task. current num job before stopping is: "<<tp->num_jobs<<endl;
+    tp->num_jobs = tp->num_jobs - 1;
+    pthread_mutex_unlock(&(tp->mutex_job));
+}
+//Function run by new map threads
+void * thread_function(void *ptr) {
+
+   while(true){
+        pthread_mutex_lock(&(pool.mutex_main));  //wait for a task to appear in que
+        while ((pool.work_queue).global_que.empty()) {
+            pthread_cond_wait(&(pool.cond), &(pool.mutex_main));
+        }
+        ThreadPool_work_t struct_function = ThreadPool_get_work(&pool);  //obtain the task
+        cout<<"subthread has a task!"<<endl;
+        cout<<struct_function.arg<<endl;
+        pthread_mutex_unlock(&(pool.mutex_main));  //allow other threads to obtain tasks
+        Thread_run(&pool,struct_function);  //run the task
+        cout<<"looks like it ran nani"<<endl;
+    }
+    }
+//Function called by new reduce threads. args_p is input taken upon creation of the thread
 void * thread_function_reduce(void *args_p) {
     cout<<"I am thread a thread! My id is ";
     cout<< pthread_self();
@@ -141,42 +171,29 @@ void * thread_function_reduce(void *args_p) {
 }
 
 ThreadPool_t *ThreadPool_create(int num){
-
     pool.num_members = num;
     ThreadPool_t * pnt = &pool;
     cout<<"about to create threads"<<endl;
-    for(int i=0;i<num;i++){ //for(int i=0;i<pool.num_members;i++){  testing with 1 thread for now
+    for(int i=0;i<num;i++){
         pthread_t thread_handle;
         cout<<"thread being made"<<endl;
         pthread_create(&thread_handle, NULL, thread_function, NULL);
         (pool.members_vector).push_back(thread_handle);  //this is used for join later
     }
-
-    /*
-    pthread_t thread_handle;
-    const char *msg1 = "I am Thread 1";
-    void *ret1;
-
-    pthread_create(&thread_handle, NULL, thread_function, (void *)msg1);
-    pthread_join(thread_handle, &ret1); 
-    */
-
     return pnt; 
-
 }
 
 
 char *MR_GetNext(char *key, int partition_number){
-    //cout<<"made it to MR_GetNext"<<endl;
-    int num_erased;  //this is used so we know when to return NULL.
+
     typedef std::multimap<string, string>::iterator MMAPIterator;
     string stringkey = string(key);
     std::pair<MMAPIterator, MMAPIterator> result = inter_data[partition_number].equal_range(stringkey);
     string value;
-    // multi map functions tend to returns ranges for iterators. This is why the loop is here
+    // multi map functions returns ranges for iterators. This is why the loop is here. Only loops once
     for (MMAPIterator it = result.first; it != result.second; it++){
-        value= it->second;
-        pthread_mutex_lock(&mutex_thread);
+        value = it->second;
+        pthread_mutex_lock(&mutex_thread);  //because we are removing from database, lock to prevent concurrent deletion
         inter_data[partition_number].erase(it);  //we delete the first occurence of key in the map, and exit loop. No need for more iterations
         pthread_mutex_unlock(&mutex_thread);
         return (char *) value.c_str();
@@ -187,59 +204,34 @@ char *MR_GetNext(char *key, int partition_number){
 
 
 void MR_Emit(char *key, char *value){
-   // cout<<"subthread reached MR_EMIT"<<endl;
+
     string stringkey = string(key);
     string stringvalue = string(value);
-   // cout<<stringkey<<endl;
+
     unsigned long placement = computePartitionNumber(stringkey,global_num_reducers);
-   // cout<<"we executed computePartitionNumber and got placement of"<<placement<<endl;
     
     if(inter_data.count(placement)==0){
-        //this means the partition number doesnt exist in data base
+        //if we reach here, means the partition number doesnt exist in data base yet
         multimap<string,string> temp_map;
         
         temp_map.insert(std::pair<string,string>(stringkey,stringvalue));
         pthread_mutex_lock(&mutex_main); //just in case there is concurrent writing to database
-        inter_data[placement] = temp_map;
+        inter_data[placement] = temp_map;  //inter_data<unsigned long, multimap<string,string> >
         pthread_mutex_unlock(&mutex_main);
-        //cout<<"Created new partition numbered: "<<placement;
-       // cout<<"about to print the values we inserted"<<endl;
+  
         for (multimap<string,string>::iterator it= temp_map.begin(); it != temp_map.end(); ++it) {
                 cout << it->first << "\t" << it->second << endl ;
         }
-    
+        
     }
     else if(inter_data.count(placement)>0){
-        //cout<<"going to enter the same placement numbered: "<<placement<<endl;
+        //if we reach here, we are adding to a existing partion in database
         pthread_mutex_lock(&mutex_main);
         inter_data[placement].insert(std::pair<string,string>(stringkey,stringvalue));
         pthread_mutex_unlock(&mutex_main);
-        /*
-        //START DEBUGGING CODE
-        cout<<"These are all values in the placement"<<endl;
-        for (multimap<string,string>::iterator it= inter_data[placement].begin(); it != inter_data[placement].end(); ++it) {
-                cout << it->first << "\t" << it->second << endl ;
-        }
-        cout<<"attempting to print the value we just inserted(you will see dupes for same key"<<endl;
-        typedef std::multimap<string, string>::iterator MMAPIterator;
- 
-	    // It returns a pair representing the range of elements with key equal to 'c'
-        std::pair<MMAPIterator, MMAPIterator> result = inter_data[placement].equal_range("a");
-    
-        std::cout << "All values for key a are," << std::endl;
-    
-        // Iterate over the range
-        for (MMAPIterator it = result.first; it != result.second; it++){
-            std::cout << it->second << std::endl;}
-    
-        // Total Elements in the range
-        int count = std::distance(result.first, result.second);
-        std::cout << "Total values for key 'a' are : " << count << std::endl;
-        //END DEBUGGING CODE
-        */
     }
     else{
-        cout<<"we really shouldn't be printing this lol"<<endl;
+        cout<<"Unkown Error Has Occured"<<endl;
     }
     
 }
@@ -247,10 +239,10 @@ void MR_Emit(char *key, char *value){
 void MR_Run(int num_files, char *filenames[], Mapper map, int num_mappers,
 Reducer concate, int num_reducers){
 
-    pool = *ThreadPool_create(num_mappers);  //this will create the num_mappers number of threads
+    pool = *ThreadPool_create(num_mappers);  //the thread pool object for mapping is global for ease of use
     global_num_reducers = num_reducers; //this global variable is to be passed to other functions
 
-    //begins sorting
+    //begin sorting
     vector<MyFile> file_vec;
 
     for(int i=0;i<num_files;i++){
@@ -263,67 +255,29 @@ Reducer concate, int num_reducers){
 
     sort(file_vec.begin(), file_vec.end(), file_less_than());
 
-    /*
-    for(int i=0;i<file_vec.size();i++){
-        cout<<file_vec.at(i).name << endl;
-    }
-    */
-    num_jobs = 0;
-    for(int i=0;i<num_files;i++){
-        ThreadPool_work_t struct_function;
-        struct_function.func =(thread_func_t) map;  //to call this, go (struct_function.func)(arg)
-        struct_function.arg = file_vec.at(i).name;  //REMEMBER: this is pointer/adress.
-        //cout<<"the file we are checking is: "<<((char *)(struct_function.arg))<<endl;
-        pthread_mutex_lock(&mutex_job);
-        num_jobs = num_jobs+ 1;
-        cout<<"main thread just increased job count. the job count is: "<<num_jobs<<endl;
-        pthread_mutex_unlock(&mutex_job);
-        pthread_mutex_lock(&mutex_main);
-        (pool.work_queue).global_que.push_front(struct_function);
-        pthread_mutex_unlock(&mutex_main);
-       // cout<<"main is going to send the signal"<<endl;
-        pthread_cond_signal(&cond);
+    pool.num_jobs = 0;  //initializing number of jobs
+    for(int i=0;i<num_files;i++){  //file_vec is a vector of files sorted for LJF
+        ThreadPool_add_work(&pool,(thread_func_t)map,file_vec.at(i).name);
         }
-        //wait for all threads in pool to finish
-        //TODO:implement destruction function
+    ThreadPool_destroy(&pool);
 
-        cout<<"waiting for everything to finish"<<endl;
-        while(num_jobs !=0){
-            
-            ;//spinning
-        }
-        for(int i=0;i<pool.members_vector.size();i++){
-            cout<<"going to kill "<<pool.members_vector.at(i)<<endl;;
-            pthread_cancel(pool.members_vector.at(i));
-        }
-        //(struct_function.func)(struct_function.arg);
-
-    
     cout<<"Map phase done"<<endl;
-    cout<<"verifying partitions";
-    //vector<string,string> v;
 
-    /*
-    cout<<"partition 0"<<endl;
-      for (multimap<string,string>::iterator it= inter_data[0].begin(); it != inter_data[0].end(); ++it) {
-                cout << it->first << "\t" << it->second << endl ;
-        }
-    */
     //Beginning reducing phase
     vector<pthread_t> reducer_vector;
-    //reduce_struct.func = (thread_func_t) concate;  //the function to be used for reduce(global from global struct)
-    int reduce_array[num_reducers];  //used to refer to an address of a value when calling pthread_create
-    global_pnt_reduce = concate;  //function pointer used to call the user defined reducer function
+    int reduce_array[num_reducers];  //used so that threads have different partition #'s to work on
+    global_pnt_reduce = concate;  //global function pointer used to call the user defined reducer function
     cout<<"about to create Reduce threads"<<endl;
-    for(int i = 0;i<num_reducers;i++){//for(int i=0;i<num_reducers;i++){ 
+    
+    for(int i = 0;i<num_reducers;i++){
         pthread_t thread_handle;
         cout<<"thread being made with partition "<< i<<endl;
-        reduce_array[i] = i;  //this is done because main thread could finish loop before all subthreads begin
+        reduce_array[i] = i;  //this is also done because main thread could finish loop before all subthreads begin
         pthread_create(&thread_handle, NULL, thread_function_reduce, &reduce_array[i]);
         reducer_vector.push_back(thread_handle);  //this is used for join later
     }
     for(int i = 0;i<num_reducers;i++){
-        pthread_join(reducer_vector.at(i),NULL);
+        pthread_join(reducer_vector.at(i),NULL);  //main process only stops when all sub threads terminate
     }
     cout<<"ALL FINISHED"<<endl;
     
