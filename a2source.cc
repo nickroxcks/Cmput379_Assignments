@@ -328,8 +328,10 @@ int main(int argc, char *argv[]) {
         cout << i->second << "\n";
     }
     */
-    char *filenames[3] = {"dummy.txt","dummy2.txt","dummy3.txt"};
-    MR_Run(3, filenames, Map, 10, Reduce, 10);
+    char *filenames[20] = {"sample1.txt","sample2.txt","sample3.txt","sample4.txt","sample5.txt","sample6.txt",
+    "sample7.txt","sample8.txt","sample9.txt","sample10.txt","sample11.txt","sample12.txt","sample13.txt","sample14.txt",
+    "sample15.txt","sample16.txt","sample17.txt","sample18.txt","sample19.txt","sample20.txt"};
+    MR_Run(20, filenames, Map, 10, Reduce, 10);
     //char * test = "dummy.txt";
     return 0;
 
