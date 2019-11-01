@@ -14,20 +14,21 @@ typedef void (*thread_func_t)(void *arg);
 typedef struct ThreadPool_work_t {   //Struct for a work task
     thread_func_t func;              // The function pointer
     void *arg;                       // The arguments for the function
-    // TODO: Add other members here if needed
 } ThreadPool_work_t;
 
-typedef struct {  //a struct that describes a member and its task its working on
-    // TODO: Add members here
-    //std:: que<ThreadPool_work_t> global_que;
-    std:: deque<ThreadPool_work_t> global_que;
+typedef struct {  //a struct with a work que.
+    std:: deque<ThreadPool_work_t> global_que;  //all work tasks assigned to a pool
 } ThreadPool_work_queue_t;
 
 typedef struct {
-    // TODO: Add members here
+    pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
+    pthread_mutex_t mutex_main = PTHREAD_MUTEX_INITIALIZER;
+    pthread_mutex_t mutex_thread = PTHREAD_MUTEX_INITIALIZER;
+    pthread_mutex_t mutex_job = PTHREAD_MUTEX_INITIALIZER;
     int num_members;
+    int num_jobs;  //keep track of threads working
     ThreadPool_work_queue_t work_queue;
-    std:: vector<pthread_t> members_vector;
+    std:: vector<pthread_t> members_vector;  //vector of all threads belonging to pool
 } ThreadPool_t;
 
 
@@ -66,12 +67,12 @@ bool ThreadPool_add_work(ThreadPool_t *tp, thread_func_t func, void *arg);
 * Return:
 *     ThreadPool_work_t* - The next task to run
 */
-ThreadPool_work_t *ThreadPool_get_work(ThreadPool_t *tp);
+ThreadPool_work_t ThreadPool_get_work(ThreadPool_t *tp);
 
 /**
 * Run the next task from the task queue
 * Parameters:
 *     tp - The ThreadPool Object this thread belongs to
 */
-void *Thread_run(ThreadPool_t *tp);
+void *Thread_run(ThreadPool_t *tp, ThreadPool_work_t work_task);
 #endif
