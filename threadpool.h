@@ -5,6 +5,7 @@
 #include <vector>
 #include <queue>
 #include <deque>
+#include <list>
 //using namespace std;
 
 
@@ -26,7 +27,7 @@ typedef struct {
     // TODO: Add members here
     int num_members;
     ThreadPool_work_queue_t work_queue;
-
+    std:: vector<pthread_t> members_vector;
 } ThreadPool_t;
 
 
